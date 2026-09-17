@@ -1,0 +1,31 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: ocr-doc-classifier
+
+  ai:
+    ollama:
+      base-url: http://localhost:11434
+      chat:
+        model: qwen3.5:9b
+        options:
+          temperature: 0.1
+
+  servlet:
+    multipart:
+      enabled: true
+      max-file-size: 20MB
+      max-request-size: 20MB
+
+# 설계서 2.1절 Tess4J 설정 (이미지 기반 스캔 문서 OCR 보조 수단)
+ocr:
+  tesseract:
+    data-path: /usr/share/tesseract-ocr/5/tessdata
+    language: kor+eng
+
+logging:
+  level:
+    egovframework.example.ocr: DEBUG
+    org.springframework.ai: INFO
