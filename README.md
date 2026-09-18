@@ -22,7 +22,7 @@ OCR 문서 분류 및 검증 시스템입니다.
 ollama serve
 
 # 멀티모달 모델 다운로드 (최초 1회, 설계서 6.2절 권장 모델)
-ollama run qwen2-vl:7b
+ollama run qwen3-vl
 ```
 
 ## 2. 애플리케이션 설정
@@ -35,7 +35,7 @@ spring:
     ollama:
       base-url: http://localhost:11434   # Ollama 서버 주소
       chat:
-        model: qwen2-vl:7b               # 사용할 모델명
+        model: qwen3-vl               # 사용할 모델명
 
 ocr:
   tesseract:
