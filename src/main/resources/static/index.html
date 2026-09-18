@@ -1,0 +1,502 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>문서 분석기 · OCR 문서 분류 및 검증</title>
+<style>
+  :root{
+    --ink:#1b2333;
+    --ink-soft:#4a5468;
+    --paper:#f6f3ec;
+    --paper-line:#dcd6c6;
+    --card:#ffffff;
+    --accent:#2f5d8a;
+    --accent-dark:#203f5e;
+    --stamp:#a13d3d;
+    --ok:#2f6d4f;
+    --warn:#a13d3d;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    font-family:'Pretendard','Noto Sans KR',-apple-system,BlinkMacSystemFont,'Malgun Gothic',sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    min-height:100vh;
+    line-height:1.55;
+  }
+  .wrap{
+    max-width:760px;
+    margin:0 auto;
+    padding:56px 24px 96px;
+  }
+  header{
+    border-bottom:1px solid var(--paper-line);
+    padding-bottom:28px;
+    margin-bottom:40px;
+  }
+  .kicker{
+    font-size:13px;
+    color:var(--ink-soft);
+    letter-spacing:0.02em;
+    margin:0 0 10px;
+  }
+  h1{
+    font-size:30px;
+    margin:0 0 10px;
+    font-weight:700;
+    letter-spacing:-0.01em;
+  }
+  header p{
+    margin:0;
+    color:var(--ink-soft);
+    font-size:15px;
+    max-width:56ch;
+  }
+
+  .dropzone{
+    position:relative;
+    border:1.5px dashed var(--paper-line);
+    border-radius:var(--radius);
+    background:var(--card);
+    padding:48px 24px;
+    text-align:center;
+    cursor:pointer;
+    transition:border-color .15s ease, background .15s ease;
+  }
+  .dropzone:hover, .dropzone.drag{
+    border-color:var(--accent);
+    background:#fbfaf6;
+  }
+  .dropzone input{
+    position:absolute; inset:0; opacity:0; cursor:pointer;
+  }
+  .dz-icon{
+    width:40px; height:40px; margin:0 auto 16px;
+    color:var(--accent);
+  }
+  .dz-title{
+    font-size:16px; font-weight:600; margin-bottom:6px;
+  }
+  .dz-sub{
+    font-size:13px; color:var(--ink-soft);
+  }
+
+  .file-row{
+    display:none;
+    align-items:center;
+    justify-content:space-between;
+    gap:12px;
+    margin-top:16px;
+    padding:14px 16px;
+    background:var(--card);
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+  }
+  .file-row.show{ display:flex; }
+  .file-meta{ display:flex; align-items:center; gap:12px; min-width:0; }
+  .file-meta svg{ flex-shrink:0; color:var(--accent); }
+  .file-name{
+    font-size:14px; font-weight:600;
+    overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
+  }
+  .file-size{ font-size:12px; color:var(--ink-soft); }
+  .file-remove{
+    background:none; border:none; cursor:pointer;
+    color:var(--ink-soft); font-size:13px;
+    padding:4px 8px;
+  }
+  .file-remove:hover{ color:var(--stamp); }
+
+  .actions{
+    margin-top:20px;
+    display:flex;
+    gap:12px;
+    align-items:center;
+  }
+  button.primary{
+    background:var(--accent);
+    color:#fff;
+    border:none;
+    padding:12px 24px;
+    font-size:14px;
+    font-weight:600;
+    border-radius:var(--radius);
+    cursor:pointer;
+    transition:background .15s ease;
+  }
+  button.primary:hover:not(:disabled){ background:var(--accent-dark); }
+  button.primary:disabled{
+    background:#c7c2b4; cursor:not-allowed;
+  }
+  .status-line{
+    font-size:13px;
+    color:var(--ink-soft);
+    display:flex;
+    align-items:center;
+    gap:8px;
+  }
+  .spinner{
+    width:14px; height:14px;
+    border:2px solid var(--paper-line);
+    border-top-color:var(--accent);
+    border-radius:50%;
+    animation:spin .8s linear infinite;
+    display:none;
+  }
+  .spinner.show{ display:inline-block; }
+  @keyframes spin{ to{ transform:rotate(360deg); } }
+
+  #result{ margin-top:40px; display:none; }
+  #result.show{ display:block; }
+
+  .result-card{
+    background:var(--card);
+    border:1px solid var(--paper-line);
+    border-radius:var(--radius);
+    overflow:hidden;
+  }
+  .result-head{
+    padding:20px 24px;
+    border-bottom:1px solid var(--paper-line);
+    display:flex;
+    justify-content:space-between;
+    align-items:flex-start;
+    gap:16px;
+  }
+  .result-file{
+    font-size:13px;
+    color:var(--ink-soft);
+    margin-bottom:4px;
+  }
+  .result-category{
+    font-size:22px;
+    font-weight:700;
+  }
+  .badge{
+    font-size:12px;
+    font-weight:700;
+    padding:5px 12px;
+    border-radius:100px;
+    white-space:nowrap;
+  }
+  .badge.ok{ background:#e6efe8; color:var(--ok); }
+  .badge.warn{ background:#f3e5e2; color:var(--warn); }
+
+  .result-body{ padding:24px; }
+  .field-row{
+    display:flex;
+    justify-content:space-between;
+    align-items:center;
+    padding:10px 0;
+    border-bottom:1px solid #efece2;
+    font-size:14px;
+  }
+  .field-row:last-of-type{ border-bottom:none; }
+  .field-label{ color:var(--ink-soft); }
+  .field-value{ font-weight:600; }
+
+  .confidence-bar{
+    width:140px; height:6px; background:#efece2;
+    border-radius:100px; overflow:hidden;
+  }
+  .confidence-fill{
+    height:100%; background:var(--accent);
+  }
+  .confidence-wrap{ display:flex; align-items:center; gap:10px; }
+  .confidence-pct{ font-weight:600; font-size:13px; min-width:40px; text-align:right; }
+
+  .anomalies{
+    margin-top:18px;
+    padding:16px 18px;
+    background:#f9f1ef;
+    border:1px solid #e6d3ce;
+    border-radius:var(--radius);
+  }
+  .anomalies-title{
+    font-size:13px; font-weight:700; color:var(--stamp);
+    margin-bottom:8px;
+  }
+  .anomalies ul{
+    margin:0; padding-left:18px; font-size:13px; color:var(--ink);
+  }
+  .anomalies li{ margin-bottom:4px; }
+  .anomalies li:last-child{ margin-bottom:0; }
+
+  .error-box{
+    margin-top:40px;
+    padding:18px 20px;
+    background:#f9f1ef;
+    border:1px solid #e6d3ce;
+    border-radius:var(--radius);
+    color:var(--stamp);
+    font-size:14px;
+    display:none;
+  }
+  .error-box.show{ display:block; }
+
+  footer{
+    margin-top:64px;
+    padding-top:20px;
+    border-top:1px solid var(--paper-line);
+    font-size:12px;
+    color:var(--ink-soft);
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <p class="kicker">eGovFrame Boot · Spring AI(Ollama)</p>
+    <h1>문서 분석기</h1>
+    <p>PDF를 업로드하면 텍스트 추출(PDFBox) 또는 OCR 보완 후, AI가 문서 종류를 분류하고 내용의 이상 여부를 검증합니다.</p>
+  </header>
+
+  <label class="dropzone" id="dropzone">
+    <input type="file" id="fileInput" accept="application/pdf,.pdf">
+    <svg class="dz-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+      <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+      <path d="M14 3v5h5"/>
+      <path d="M9.5 14.5l2-2 2 2M11.5 12.5V18"/>
+    </svg>
+    <div class="dz-title">PDF 파일을 이곳에 끌어다 놓거나 클릭해서 선택하세요</div>
+    <div class="dz-sub">최대 20MB · .pdf 파일만 지원</div>
+  </label>
+
+  <div class="file-row" id="fileRow">
+    <div class="file-meta">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+        <path d="M7 3h7l5 5v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1z"/>
+        <path d="M14 3v5h5"/>
+      </svg>
+      <div>
+        <div class="file-name" id="fileName"></div>
+        <div class="file-size" id="fileSize"></div>
+      </div>
+    </div>
+    <button class="file-remove" id="fileRemove">제거</button>
+  </div>
+
+  <div class="actions">
+    <button class="primary" id="analyzeBtn" disabled>분석 시작</button>
+    <span class="status-line" id="statusLine">
+      <span class="spinner" id="spinner"></span>
+      <span id="statusText"></span>
+    </span>
+  </div>
+
+  <div class="error-box" id="errorBox"></div>
+
+  <div id="result">
+    <div class="result-card">
+      <div class="result-head">
+        <div>
+          <div class="result-file" id="resFile"></div>
+          <div class="result-category" id="resCategory"></div>
+        </div>
+        <span class="badge" id="resBadge"></span>
+      </div>
+      <div class="result-body">
+        <div class="field-row">
+          <span class="field-label">분류 신뢰도</span>
+          <span class="confidence-wrap">
+            <span class="confidence-bar"><span class="confidence-fill" id="confFill"></span></span>
+            <span class="confidence-pct" id="confPct"></span>
+          </span>
+        </div>
+        <div class="field-row">
+          <span class="field-label">텍스트 추출 방식</span>
+          <span class="field-value" id="resMethod"></span>
+        </div>
+        <div id="anomaliesWrap"></div>
+      </div>
+    </div>
+  </div>
+
+  <footer>POST /api/v1/documents/analyze 로 직접 호출할 수도 있습니다.</footer>
+</div>
+
+<script>
+  /*
+   * 문서 분석기 업로드 화면 스크립트.
+   *
+   * 역할: PDF 파일 선택(드래그앤드롭/클릭) → 클라이언트 측 유효성 검사
+   *       → POST /api/v1/documents/analyze 로 전송 → 응답(AnalysisResponse)을
+   *       화면에 렌더링. 별도 프레임워크 없이 순수 JS로 구현.
+   */
+
+  // ── DOM 엘리먼트 참조 ──────────────────────────────────────────
+  const dropzone = document.getElementById('dropzone');
+  const fileInput = document.getElementById('fileInput');
+  const fileRow = document.getElementById('fileRow');
+  const fileName = document.getElementById('fileName');
+  const fileSize = document.getElementById('fileSize');
+  const fileRemove = document.getElementById('fileRemove');
+  const analyzeBtn = document.getElementById('analyzeBtn');
+  const spinner = document.getElementById('spinner');
+  const statusText = document.getElementById('statusText');
+  const errorBox = document.getElementById('errorBox');
+  const resultEl = document.getElementById('result');
+
+  // 현재 선택된 File 객체 (분석 버튼 클릭 시 이 값을 전송한다)
+  let selectedFile = null;
+
+  /** 바이트 단위 파일 크기를 사람이 읽기 쉬운 단위(B/KB/MB)로 변환한다. */
+  function formatSize(bytes){
+    if(bytes < 1024) return bytes + ' B';
+    if(bytes < 1024*1024) return (bytes/1024).toFixed(1) + ' KB';
+    return (bytes/1024/1024).toFixed(1) + ' MB';
+  }
+
+  /**
+   * 선택/드롭된 파일을 검증하고 화면 상태(파일 정보 표시, 분석 버튼 활성화)를 갱신한다.
+   * PDF가 아니거나 20MB를 초과하면 에러를 표시하고 반영하지 않는다.
+   */
+  function setFile(file){
+    if(!file) return;
+    if(file.type !== 'application/pdf' && !file.name.toLowerCase().endsWith('.pdf')){
+      showError('PDF 파일만 업로드할 수 있습니다.');
+      return;
+    }
+    if(file.size > 20 * 1024 * 1024){
+      showError('파일 크기는 최대 20MB까지 지원합니다.');
+      return;
+    }
+    selectedFile = file;
+    fileName.textContent = file.name;
+    fileSize.textContent = formatSize(file.size);
+    fileRow.classList.add('show');
+    analyzeBtn.disabled = false;
+    hideError();
+    hideResult();
+  }
+
+  /** 선택된 파일과 관련 UI 상태를 모두 초기화한다 ("제거" 버튼 클릭 시 호출). */
+  function clearFile(){
+    selectedFile = null;
+    fileInput.value = '';
+    fileRow.classList.remove('show');
+    analyzeBtn.disabled = true;
+  }
+
+  // 파일 선택창(클릭)을 통해 파일이 선택된 경우
+  fileInput.addEventListener('change', e => setFile(e.target.files[0]));
+
+  // 드래그 중인 파일이 드롭존 위에 있는 동안 시각적 하이라이트 표시
+  ['dragover','dragenter'].forEach(evt =>
+    dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.add('drag'); })
+  );
+  // 드래그가 벗어나거나 드롭이 끝나면 하이라이트 해제
+  ['dragleave','drop'].forEach(evt =>
+    dropzone.addEventListener(evt, e => { e.preventDefault(); dropzone.classList.remove('drag'); })
+  );
+  // 실제 드롭된 파일을 선택 파일로 등록
+  dropzone.addEventListener('drop', e => {
+    const file = e.dataTransfer.files[0];
+    if(file) setFile(file);
+  });
+
+  // "제거" 버튼: 선택된 파일 취소
+  fileRemove.addEventListener('click', e => {
+    e.preventDefault();
+    clearFile();
+  });
+
+  /** 에러 메시지 박스를 표시한다. */
+  function showError(msg){
+    errorBox.textContent = msg;
+    errorBox.classList.add('show');
+  }
+  /** 에러 메시지 박스를 숨긴다. */
+  function hideError(){ errorBox.classList.remove('show'); }
+  /** 이전 분석 결과 카드를 숨긴다 (새 파일 선택/재분석 시 초기화 목적). */
+  function hideResult(){ resultEl.classList.remove('show'); }
+
+  /** 분석 버튼/스피너/안내 문구 등 "분석 진행 중" 상태를 토글한다. */
+  function setLoading(loading){
+    analyzeBtn.disabled = loading || !selectedFile;
+    spinner.classList.toggle('show', loading);
+    statusText.textContent = loading ? '분석 중입니다. AI 모델 응답까지 시간이 걸릴 수 있습니다…' : '';
+  }
+
+  // "분석 시작" 버튼: 선택된 파일을 백엔드 API로 전송하고 결과를 렌더링
+  analyzeBtn.addEventListener('click', async () => {
+    if(!selectedFile) return;
+    hideError();
+    hideResult();
+    setLoading(true);
+
+    // 백엔드 DocumentAnalysisController#analyze 가 요구하는 multipart form key: "file"
+    const formData = new FormData();
+    formData.append('file', selectedFile);
+
+    try {
+      const res = await fetch('/api/v1/documents/analyze', {
+        method: 'POST',
+        body: formData
+      });
+      // 200(성공)뿐 아니라 400/422/500 등 실패 응답도 JSON 바디(AnalysisResponse)를
+      // 담고 있으므로, HTTP 상태와 무관하게 body를 파싱해 success 필드로 분기한다.
+      const data = await res.json();
+      renderResult(data);
+    } catch (err) {
+      // 네트워크 단절 등 fetch 자체가 실패한 경우
+      showError('서버와 통신 중 오류가 발생했습니다: ' + err.message);
+    } finally {
+      setLoading(false);
+    }
+  });
+
+  /**
+   * 서버로부터 받은 AnalysisResponse(JSON)를 화면에 렌더링한다.
+   * success가 false면 에러 박스만 표시하고, true면 분류/검증 결과 카드를 채운다.
+   */
+  function renderResult(data){
+    if(!data.success){
+      showError(data.errorMessage || '문서 분석에 실패했습니다.');
+      return;
+    }
+
+    document.getElementById('resFile').textContent = data.fileName || '';
+    document.getElementById('resCategory').textContent = (data.result && data.result.category) || '분류 결과 없음';
+    document.getElementById('resMethod').textContent = data.extractionMethod || '-';
+
+    const status = (data.result && data.result.verificationStatus) || '-';
+    const badge = document.getElementById('resBadge');
+    badge.textContent = status;
+    const isOk = status === '정상';
+    badge.className = 'badge ' + (isOk ? 'ok' : 'warn');
+
+    // confidence는 0.0~1.0 범위의 실수이므로 퍼센트로 변환해 바(bar)와 텍스트로 표시
+    const conf = (data.result && data.result.confidence != null) ? data.result.confidence : 0;
+    const pct = Math.round(conf * 100);
+    document.getElementById('confFill').style.width = pct + '%';
+    document.getElementById('confPct').textContent = pct + '%';
+
+    // 이상 징후 목록이 있을 때만 안내 박스를 렌더링 (없으면 비워서 숨김)
+    const anomaliesWrap = document.getElementById('anomaliesWrap');
+    const anomalies = (data.result && data.result.anomalies) || [];
+    if(anomalies.length > 0){
+      anomaliesWrap.innerHTML = `
+        <div class="anomalies">
+          <div class="anomalies-title">감지된 이상 징후</div>
+          <ul>${anomalies.map(a => `<li>${escapeHtml(a)}</li>`).join('')}</ul>
+        </div>`;
+    } else {
+      anomaliesWrap.innerHTML = '';
+    }
+
+    resultEl.classList.add('show');
+  }
+
+  /** XSS 방지를 위해 텍스트를 HTML 엔티티로 이스케이프한다 (이상 징후 목록 렌더링 시 사용). */
+  function escapeHtml(str){
+    const div = document.createElement('div');
+    div.textContent = str;
+    return div.innerHTML;
+  }
+</script>
+</body>
+</html>

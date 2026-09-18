@@ -1,31 +1,38 @@
+# 내장 톰캣이 사용할 포트. 웹 업로드 화면(static/index.html)과 REST API 모두 이 포트로 서비스된다.
 server:
   port: 8080
 
 spring:
   application:
+    # 애플리케이션 식별 이름 (로그, Actuator 등에서 사용)
     name: ocr-doc-classifier
 
+  # Spring AI Ollama 스타터 자동구성 설정.
+  # SpringAiConfig#documentChatClient 빈이 이 값들을 기반으로 생성된다.
   ai:
     ollama:
-      base-url: http://localhost:11434
+      base-url: http://localhost:11434   # 로컬/원격 Ollama 서버 주소 (README 1절 `ollama serve` 로 기동)
       chat:
-        model: qwen3-vl
+        model: qwen3-vl                  # 사용할 멀티모달(Vision-Language) 모델명
         options:
-          temperature: 0.1
+          temperature: 0.1               # 낮을수록 결정적(일관된) 응답 - 분류/검증처럼 정형 응답이 필요한 용도에 적합
 
+  # 파일 업로드(멀티파트) 관련 설정. DocumentAnalysisController#analyze 가 받는 PDF 파일 크기 제한.
   servlet:
     multipart:
       enabled: true
-      max-file-size: 20MB
-      max-request-size: 20MB
+      max-file-size: 20MB      # 파일 1개당 최대 크기 - 초과 시 GlobalExceptionHandler#handleMaxUploadSize 에서 413 응답
+      max-request-size: 20MB   # 요청 전체 최대 크기
 
 # 설계서 2.1절 Tess4J 설정 (이미지 기반 스캔 문서 OCR 보조 수단)
+# Tess4jOcrService 생성자가 이 값들을 주입받아 Tesseract 엔진을 초기화한다.
 ocr:
   tesseract:
-    data-path: /usr/share/tesseract-ocr/5/tessdata
-    language: kor+eng
+    data-path: /usr/share/tesseract-ocr/5/tessdata   # kor.traineddata, eng.traineddata 가 위치한 tessdata 경로 (OS별 상이)
+    language: kor+eng                                 # 인식 언어 (한국어+영어 동시 인식)
 
+# 패키지별 로그 레벨 조정
 logging:
   level:
-    egovframework.example.ocr: DEBUG
-    org.springframework.ai: INFO
+    egovframework.example.ocr: DEBUG   # 이 프로젝트 코드는 상세 로그(DEBUG)로 확인
+    org.springframework.ai: INFO       # Spring AI 프레임워크 로그는 INFO 수준으로 제한

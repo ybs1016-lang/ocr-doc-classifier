@@ -10,6 +10,11 @@ import org.springframework.boot.test.context.SpringBootTest;
 @SpringBootTest
 class OcrDocClassifierApplicationTests {
 
+    /**
+     * Spring 컨텍스트(모든 빈: 컨트롤러, 서비스, 설정 등)가 예외 없이
+     * 정상적으로 기동되는지만 확인하는 최소 단위의 헬스 체크 테스트.
+     * 별도 assertion이 없어도, 컨텍스트 로드 중 예외가 발생하면 테스트가 실패한다.
+     */
     @Test
     void contextLoads() {
     }
