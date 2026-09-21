@@ -36,3 +36,5 @@ logging:
   level:
     egovframework.example.ocr: DEBUG   # 이 프로젝트 코드는 상세 로그(DEBUG)로 확인
     org.springframework.ai: INFO       # Spring AI 프레임워크 로그는 INFO 수준으로 제한
+  charset:
+    console: UTF-8

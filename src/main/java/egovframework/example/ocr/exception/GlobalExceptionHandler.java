@@ -7,6 +7,7 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 /**
  * 컨트롤러 전역에서 발생하는 예외를 일관된 {@link AnalysisResponse} 형식으로 변환한다.
@@ -62,5 +63,12 @@ public class GlobalExceptionHandler {
         return ResponseEntity
                 .status(HttpStatus.INTERNAL_SERVER_ERROR)
                 .body(AnalysisResponse.builder().success(false).errorMessage("서버 내부 오류가 발생했습니다.").build());
+    }
+
+    /** favicon.ico 등 존재하지 않는 정적 리소스 요청은 500이 아닌 404로 응답한다. */
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<Void> handleNoResource(NoResourceFoundException e) {
+        log.debug("정적 리소스 없음: {}", e.getResourcePath());
+        return ResponseEntity.notFound().build();
     }
 }
