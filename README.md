@@ -4,7 +4,7 @@ eGovFrame Boot 실행환경(Spring Boot 기반) + Spring AI(Ollama) 를 이용�
 OCR 문서 분류 및 검증 시스템입니다.
 
 원본 설계서 「[기술 가이드] Spring AI 기반 OCR 문서 분류 및 검증 설계서」의
-아키텍처(PDFBox 텍스트 추출 → 필요 시 OCR 보완 → Spring AI(Ollama, qwen2-vl)
+아키텍처(PDFBox 텍스트 추출 → 필요 시 OCR 보완 → Spring AI(Ollama, qwen3-vl)
 분류/검증)를 그대로 구현했습니다. 자세한 다이어그램은 [`docs/architecture.md`](docs/architecture.md)
 참고.
 
@@ -44,6 +44,18 @@ ocr:
 ```
 
 ## 3. 빌드 및 실행
+
+VS Code에서는 실행 및 디버그 목록의 `OCR 문서 분류기 (UTF-8 로그)`를 선택해 실행합니다. Java 실행 로그는 디버그 콘솔에 표시되며, 이 실행 방식은 터미널 코드 페이지 설정에 영향을 받지 않습니다. 기존 실행 중인 앱은 종료하고 다시 시작해야 새 설정이 적용됩니다.
+
+Windows PowerShell에서 직접 실행할 때는 같은 터미널에서 먼저 `chcp 65001`을 실행해 코드 페이지를 UTF-8로 맞춥니다. 이미 실행 중인 앱은 종료한 뒤 다시 시작해야 적용됩니다.
+
+```powershell
+chcp 65001
+mvn clean package
+mvn spring-boot:run
+```
+
+그 외 환경에서는 다음 명령으로 실행합니다.
 
 ```bash
 mvn clean package

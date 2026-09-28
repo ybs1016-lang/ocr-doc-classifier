@@ -68,7 +68,7 @@
             <artifactId>spring-boot-starter-validation</artifactId>
         </dependency>
 
-        <!-- Spring AI + Ollama (qwen2-vl 등 멀티모달 모델 연동) -->
+        <!-- Spring AI + Ollama (qwen3-vl 등 멀티모달 모델 연동) -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-ollama-spring-boot-starter</artifactId>

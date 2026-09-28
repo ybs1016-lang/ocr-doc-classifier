@@ -1,0 +1,14 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "type": "java",
+            "name": "OCR 문서 분류기 (UTF-8 로그)",
+            "request": "launch",
+            "mainClass": "egovframework.example.ocr.OcrDocClassifierApplication",
+            "console": "internalConsole",
+            "encoding": "UTF-8",
+            "vmArgs": "-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8"
+        }
+    ]
+}

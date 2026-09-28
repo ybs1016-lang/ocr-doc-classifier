@@ -2,6 +2,7 @@
     "java.compile.nullAnalysis.mode": "automatic",
     "java.configuration.updateBuildConfiguration": "interactive",
     "java.debug.settings.vmArgs": "-Dfile.encoding=UTF-8 -Dsun.stdout.encoding=UTF-8 -Dsun.stderr.encoding=UTF-8",
+    "java.debug.settings.console": "internalConsole",
     "terminal.integrated.profiles.windows": {
         "PowerShell (UTF-8)": {
             "source": "PowerShell",
@@ -12,5 +13,13 @@
             ]
         }
     },
-    "terminal.integrated.defaultProfile.windows": "PowerShell (UTF-8)"
+    "terminal.integrated.defaultProfile.windows": "PowerShell (UTF-8)",
+    "terminal.integrated.automationProfile.windows": {
+        "path": "C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe",
+        "args": [
+            "-NoExit",
+            "-Command",
+            "chcp 65001 > $null"
+        ]
+    }
 }

@@ -13,7 +13,7 @@ import org.springframework.boot.autoconfigure.SpringBootApplication;
  * PDF 파일 -> 문서 분석기
  *              ├─ 텍스트 스트림 있음  -> PDFBox 텍스트 추출
  *              └─ 이미지 기반 문서    -> OCR 처리 (Tess4J/PaddleOCR)
- *                          └─ Spring AI ChatRequest -> Ollama(qwen2-vl 모델)
+ *                          └─ Spring AI ChatRequest -> Ollama(qwen3-vl 모델)
  *                                      ├─ 문서 분류 결과 JSON
  *                                      └─ 텍스트 정확도 검증 결과
  * </pre>

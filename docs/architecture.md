@@ -8,7 +8,7 @@ graph TD
     B -->|텍스트 스트림 있음| C[PDFBox 텍스트 추출]
     B -->|이미지 기반 문서| D[OCR 처리 Tess4J/PaddleOCR]
     C & D --> E[Spring AI ChatRequest]
-    E --> F[Ollama qwen2-vl 모델]
+    E --> F[Ollama qwen3-vl 모델]
     F --> G[문서 분류 결과 JSON]
     F --> H[텍스트 정확도 검증 결과]
 ```

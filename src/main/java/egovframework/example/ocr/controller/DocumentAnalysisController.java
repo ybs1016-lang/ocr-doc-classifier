@@ -1,10 +1,16 @@
 package egovframework.example.ocr.controller;
 
 import egovframework.example.ocr.dto.AnalysisResponse;
+import egovframework.example.ocr.dto.JobStatus;
+import egovframework.example.ocr.dto.JobStatusResponse;
 import egovframework.example.ocr.exception.DocumentProcessingException;
 import egovframework.example.ocr.service.DocumentProcessorService;
+import egovframework.example.ocr.service.job.AnalysisJob;
+import egovframework.example.ocr.service.job.AnalysisJobService;
+import egovframework.example.ocr.service.job.JobRejectedException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.http.CacheControl;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -12,8 +18,10 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.File;
 import java.io.IOException;
+import java.net.URI;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Optional;
 import java.util.UUID;
 
 /**
@@ -31,6 +39,9 @@ public class DocumentAnalysisController {
 
     /** 전체 흐름(추출 → OCR 보완 → LLM 분류/검증)을 오케스트레이션하는 서비스. */
     private final DocumentProcessorService documentProcessorService;
+
+    /** 비동기 분석 작업의 접수/상태 조회를 담당하는 서비스. */
+    private final AnalysisJobService analysisJobService;
 
     /**
      * PDF 파일을 업로드받아 분류/검증 결과를 반환하는 API.
@@ -89,6 +100,79 @@ public class DocumentAnalysisController {
      * @return 디스크에 저장된 임시 파일
      * @throws DocumentProcessingException 임시 파일 생성/쓰기 중 I/O 오류가 발생한 경우
      */
+    /**
+     * PDF 를 <b>비동기</b>로 분석하도록 접수한다. (권장 API)
+     *
+     * <p>파일을 임시 디스크에 저장한 뒤 곧바로 {@code 202 Accepted} 와 작업 ID 를 반환하고,
+     * 실제 분석(PDF 추출 → OCR → AI 분류)은 백그라운드 스레드가 수행한다. 클라이언트는
+     * {@link #getJob(String)} 으로 진행 상황을 주기적으로 조회해 결과를 받는다.
+     * 오래 걸리는 분석이 HTTP 연결을 붙잡지 않으므로 타임아웃 위험이 없다.</p>
+     *
+     * <ul>
+     *   <li>202 : 접수됨 (본문 = 초기 상태, {@code Location} = 상태 조회 URL)</li>
+     *   <li>400 : 파일 없음</li>
+     *   <li>503 : 대기열이 가득 참 ({@code Retry-After} 헤더 참고)</li>
+     * </ul>
+     *
+     * @param file multipart form 의 {@code file} 파트
+     */
+    @PostMapping(value = "/jobs", consumes = "multipart/form-data")
+    public ResponseEntity<JobStatusResponse> submitJob(@RequestParam("file") MultipartFile file) {
+
+        if (file == null || file.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(errorStatus("업로드된 파일이 없습니다."));
+        }
+
+        // 요청이 끝나면 MultipartFile 이 사라지므로, 백그라운드 작업이 읽을 수 있게 임시 파일로 옮긴다.
+        // 저장 실패 시 DocumentProcessingException -> GlobalExceptionHandler(422) 가 처리한다.
+        File tempFile = toTempFile(file);
+        try {
+            AnalysisJob job = analysisJobService.submit(tempFile, file.getOriginalFilename());
+            tempFile = null;   // 접수 성공: 임시 파일의 소유권과 삭제 책임이 작업으로 넘어갔다.
+            return ResponseEntity.accepted()
+                    .location(URI.create("/api/v1/documents/jobs/" + job.getId()))
+                    .body(analysisJobService.toStatus(job));
+        } catch (JobRejectedException e) {
+            return ResponseEntity.status(HttpStatus.SERVICE_UNAVAILABLE)
+                    .header("Retry-After", "10")
+                    .body(errorStatus(e.getMessage()));
+        } finally {
+            // 접수 전에 예외가 난 경우에만 파일이 남아 있다. (정상 접수 시 tempFile == null)
+            cleanup(tempFile);
+        }
+    }
+
+    /**
+     * 비동기 분석 작업의 현재 진행 상태를 조회한다. (클라이언트가 주기적으로 호출)
+     *
+     * <p>{@code status} 가 {@code COMPLETED}/{@code FAILED} 가 되면 {@code result} 에
+     * 최종 분석 결과가 담기며, 이후에는 폴링을 멈추면 된다. 종료된 작업은 일정 시간
+     * (기본 30분) 뒤 삭제되므로 그 뒤에는 404 가 반환된다.</p>
+     *
+     * @param jobId 접수 시 받은 작업 ID
+     */
+    @GetMapping("/jobs/{jobId}")
+    public ResponseEntity<JobStatusResponse> getJob(@PathVariable("jobId") String jobId) {
+        Optional<AnalysisJob> job = analysisJobService.find(jobId);
+        if (job.isEmpty()) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND)
+                    .cacheControl(CacheControl.noStore())
+                    .body(errorStatus("분석 작업을 찾을 수 없습니다. 보관 기간이 지났거나 서버가 재시작되었을 수 있습니다."));
+        }
+        // 진행 상태는 계속 바뀌므로 브라우저/프록시가 캐시하지 않도록 한다.
+        return ResponseEntity.ok()
+                .cacheControl(CacheControl.noStore())
+                .body(analysisJobService.toStatus(job.get()));
+    }
+
+    /** 작업 API 의 오류 응답을 정상 응답과 같은 형태(JobStatusResponse)로 만든다. */
+    private JobStatusResponse errorStatus(String message) {
+        return JobStatusResponse.builder()
+                .status(JobStatus.FAILED)
+                .message(message)
+                .build();
+    }
+
     private File toTempFile(MultipartFile file) {
         try {
             Path tempPath = Files.createTempFile("ocr-doc-" + UUID.randomUUID(), ".pdf");

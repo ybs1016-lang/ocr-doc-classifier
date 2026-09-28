@@ -3,6 +3,7 @@ package egovframework.example.ocr.service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import egovframework.example.ocr.dto.AnalysisResponse;
 import egovframework.example.ocr.dto.AnalysisResult;
+import egovframework.example.ocr.dto.AnalysisStage;
 import egovframework.example.ocr.exception.DocumentProcessingException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -19,7 +20,7 @@ import java.util.List;
  * <ol>
  *   <li>PDFBox 로 텍스트 스트림 존재 여부 판단</li>
  *   <li>텍스트 스트림이 없는 페이지는 이미지로 렌더링 후 OCR(Tess4J) 처리</li>
- *   <li>추출된 텍스트를 Spring AI(Ollama, qwen2-vl) 에 전달하여 분류/검증</li>
+ *   <li>추출된 텍스트를 Spring AI(Ollama, qwen3-vl) 에 전달하여 분류/검증</li>
  *   <li>LLM 응답(JSON)을 {@link AnalysisResult} 로 파싱</li>
  * </ol>
  */
@@ -48,23 +49,50 @@ public class DocumentProcessorService {
      * 인 {@link AnalysisResponse} 로 변환해 반환한다. 즉, 컨트롤러 입장에서는
      * 항상 정상적으로 리턴값을 받아 HTTP 상태 코드만 분기하면 된다.</p>
      *
+     * <p>진행 상황이 필요 없는 동기 호출용이며, 내부적으로
+     * {@link #analyzeFile(File, String, AnalysisProgressListener)} 에
+     * {@link AnalysisProgressListener#NOOP} 을 넘겨 실행한다.</p>
+     *
      * @param file             컨트롤러가 임시 디스크에 저장해 둔 PDF 파일
      * @param originalFileName 사용자가 업로드한 원본 파일명 (응답에 그대로 포함됨)
      * @return 분류/검증 결과 또는 실패 사유를 담은 응답
      */
     public AnalysisResponse analyzeFile(File file, String originalFileName) {
+        return analyzeFile(file, originalFileName, AnalysisProgressListener.NOOP);
+    }
+
+    /**
+     * {@link #analyzeFile(File, String)} 와 동일하게 분석하되, 각 처리 단계 전환과
+     * OCR 페이지 진행 상황을 {@code progress} 리스너로 알려준다. (비동기 작업 서비스에서 사용)
+     *
+     * @param file             임시 디스크에 저장된 PDF 파일
+     * @param originalFileName 사용자가 업로드한 원본 파일명
+     * @param progress         진행 상황을 전달받을 리스너. null 이면 {@link AnalysisProgressListener#NOOP}
+     * @return 분류/검증 결과 또는 실패 사유를 담은 응답
+     */
+    public AnalysisResponse analyzeFile(File file, String originalFileName, AnalysisProgressListener progress) {
+        AnalysisProgressListener listener = progress != null ? progress : AnalysisProgressListener.NOOP;
         try {
-            boolean hasText = pdfExtractService.hasExtractableText(file);
+            // 0. PDF 를 한 번만 열어 페이지별 텍스트 유무를 조사한다.
+            //    (이전에는 판별용과 OCR용으로 같은 분석을 두 번 수행했다.)
+            listener.stageStarted(AnalysisStage.ANALYZING);
+            List<Boolean> pageAvailability = pdfExtractService.analyzeTextAvailability(file);
+            int totalPages = pageAvailability.size();
+            boolean hasText = pageAvailability.stream().anyMatch(Boolean::booleanValue);
             String extractionMethod;
             String rawText;
 
             if (hasText) {
                 // 1. 텍스트 스트림이 있는 일반 PDF -> PDFBox 로 바로 추출
+                listener.extractionMethodDetermined("PDFBOX", totalPages);
+                listener.stageStarted(AnalysisStage.EXTRACTING);
                 rawText = pdfExtractService.extractText(file);
                 extractionMethod = "PDFBOX";
             } else {
                 // 2. 이미지 기반 스캔 문서 -> 페이지 렌더링 후 OCR 처리
-                rawText = extractTextViaOcr(file);
+                listener.extractionMethodDetermined("OCR", totalPages);
+                listener.stageStarted(AnalysisStage.OCR);
+                rawText = extractTextViaOcr(file, totalPages, listener);
                 extractionMethod = "OCR";
             }
 
@@ -74,6 +102,7 @@ public class DocumentProcessorService {
             }
 
             // 추출된 텍스트를 LLM에 넘겨 문서 종류 분류 + 내용 검증(이상 탐지) 수행.
+            listener.stageStarted(AnalysisStage.AI_ANALYSIS);
             AnalysisResult result = classifyAndVerify(rawText);
 
             return AnalysisResponse.builder()
@@ -111,19 +140,20 @@ public class DocumentProcessorService {
      * <p>페이지 순서를 유지하기 위해 인덱스 순서대로 처리하며, 각 페이지 텍스트
      * 사이에는 개행 문자를 넣어 구분한다.</p>
      *
-     * @param file 텍스트 스트림이 없다고 판단된 PDF 파일
+     * @param file       텍스트 스트림이 없다고 판단된 PDF 파일
+     * @param totalPages PDF 전체 페이지 수 (앞 단계의 페이지 분석 결과)
+     * @param listener   페이지 하나를 마칠 때마다 진행 상황을 전달받을 리스너
      * @return 모든 페이지의 OCR 결과를 합친 전체 텍스트 (앞뒤 공백 제거됨)
      */
-    private String extractTextViaOcr(File file) {
-        // 페이지별로 텍스트 추출 가능 여부를 먼저 조사해, 총 페이지 수만큼 순회한다.
-        List<Boolean> pageAvailability = pdfExtractService.analyzeTextAvailability(file);
+    private String extractTextViaOcr(File file, int totalPages, AnalysisProgressListener listener) {
         StringBuilder combined = new StringBuilder();
 
-        for (int i = 0; i < pageAvailability.size(); i++) {
+        for (int i = 0; i < totalPages; i++) {
             // 페이지를 비트맵 이미지(PNG 등)로 렌더링한 뒤 OCR 엔진에 전달.
             byte[] pageImage = pdfExtractService.renderPageAsImage(file, i);
             String pageText = ocrService.extractTextFromImage(pageImage);
             combined.append(pageText).append("\n");
+            listener.ocrPageCompleted(i + 1, totalPages);
         }
         return combined.toString().trim();
     }
@@ -141,14 +171,27 @@ public class DocumentProcessorService {
     private AnalysisResult classifyAndVerify(String extractedText) {
         String prompt = buildPrompt(extractedText);
 
-        // ChatClient.prompt().user(...).call().content() : 동기 호출로 LLM 응답 텍스트만 받아온다.
-        String content = documentChatClient
+        String content = callLlm(prompt);
+
+        return parseResult(content);
+    }
+
+    /**
+     * LLM(Ollama)을 동기 호출해 응답 텍스트를 받아온다.
+     *
+     * <p>{@code ChatClient.prompt().user(...).call().content()} 로 응답 본문만 가져온다.
+     * 외부 서버 호출 지점을 한 곳으로 모아, 단위 테스트에서 이 메서드만 재정의해
+     * Ollama 없이 파이프라인을 검증할 수 있게 했다.</p>
+     *
+     * @param prompt {@link #buildPrompt(String)} 로 조립한 사용자 프롬프트
+     * @return LLM 이 반환한 원문 응답
+     */
+    protected String callLlm(String prompt) {
+        return documentChatClient
                 .prompt()
                 .user(prompt)
                 .call()
                 .content();
-
-        return parseResult(content);
     }
 
     /**

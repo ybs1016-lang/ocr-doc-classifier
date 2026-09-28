@@ -50,12 +50,17 @@ public class Tess4jOcrService implements OcrService {
      * <p>{@link egovframework.example.ocr.service.PdfExtractService#renderPageAsImage}
      * 로 렌더링된 PNG 페이지 이미지가 주 입력으로 사용된다.</p>
      *
+     * <p><b>스레드 안전성:</b> Tess4J 의 {@link Tesseract} 인스턴스는 스레드 안전하지 않은데,
+     * 이 서비스는 인스턴스 하나를 공유한다. 비동기 분석은 여러 작업 스레드가 동시에 OCR 을
+     * 호출할 수 있으므로 {@code synchronized} 로 호출을 직렬화한다. (OCR 만 순서대로 처리되고,
+     * 다른 작업의 PDF 분석·LLM 호출은 그와 무관하게 병렬로 진행된다.)</p>
+     *
      * @param imageBytes PNG/JPEG 등 이미지 바이너리
      * @return 인식된 텍스트
      * @throws DocumentProcessingException 이미지 디코딩 실패 또는 OCR 엔진 처리 중 오류가 발생한 경우
      */
     @Override
-    public String extractTextFromImage(byte[] imageBytes) {
+    public synchronized String extractTextFromImage(byte[] imageBytes) {
         try {
             BufferedImage image = ImageIO.read(new ByteArrayInputStream(imageBytes));
             if (image == null) {
