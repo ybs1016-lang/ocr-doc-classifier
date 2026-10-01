@@ -6,6 +6,7 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -25,8 +26,14 @@ public class JobStatusResponse {
     /** 작업 식별자 (UUID). 상태 조회 URL 에 사용한다. */
     private String jobId;
 
+    /** 문서 식별자 ({@code doc-} + 작업 UUID). */
+    private String documentId;
+
     /** 사용자가 업로드한 원본 파일명. */
     private String fileName;
+
+    /** 업로드한 원본 PDF 를 내려받는(화면 미리보기용) URL. 보관 중일 때만 채워진다. */
+    private String fileUrl;
 
     /** 작업 전체 상태. */
     private JobStatus status;
@@ -60,4 +67,10 @@ public class JobStatusResponse {
 
     /** 작업이 끝난 뒤(COMPLETED/FAILED)에만 채워지는 최종 분석 결과. */
     private AnalysisResponse result;
+
+    /** 화면의 "원본 JSON" 으로 보여주는 분석 보고서. 진행 중에는 분류·필드가 비어 있는 뼈대. */
+    private AnalysisReport report;
+
+    /** 단계별 처리 로그 (오래된 순). */
+    private List<JobLogEntry> logs;
 }

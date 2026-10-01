@@ -1,5 +1,6 @@
 package egovframework.example.ocr.dto;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -42,4 +43,11 @@ public class AnalysisResponse {
 
     /** 오류 발생 시 사용자에게 보여줄 메시지 (성공 시 null). */
     private String errorMessage;
+
+    /**
+     * 구조화 분석 보고서(문서유형·추출 필드 등). 작업 상태 응답({@code JobStatusResponse.report})으로
+     * 내려가므로 이 응답에서는 직렬화하지 않는다.
+     */
+    @JsonIgnore
+    private AnalysisReport report;
 }

@@ -11,6 +11,9 @@ import egovframework.example.ocr.service.job.JobRejectedException;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.CacheControl;
+import org.springframework.http.ContentDisposition;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
@@ -19,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 import java.io.File;
 import java.io.IOException;
 import java.net.URI;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Optional;
@@ -163,6 +167,27 @@ public class DocumentAnalysisController {
         return ResponseEntity.ok()
                 .cacheControl(CacheControl.noStore())
                 .body(analysisJobService.toStatus(job.get()));
+    }
+
+    /**
+     * 업로드한 원본 PDF 를 돌려준다. (결과 화면의 "원문 근거" 미리보기용)
+     *
+     * <p>작업과 같은 기간(기본 30분)만 보관하며, 그 뒤에는 404 가 반환된다.</p>
+     */
+    @GetMapping("/jobs/{jobId}/file")
+    public ResponseEntity<byte[]> getJobFile(@PathVariable("jobId") String jobId) {
+        Optional<AnalysisJob> job = analysisJobService.find(jobId);
+        byte[] pdf = job.map(AnalysisJob::getOriginalPdf).orElse(null);
+        if (pdf == null) {
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).cacheControl(CacheControl.noStore()).build();
+        }
+        String name = job.get().getFileName() != null ? job.get().getFileName() : "document.pdf";
+        return ResponseEntity.ok()
+                .contentType(MediaType.APPLICATION_PDF)
+                .header(HttpHeaders.CONTENT_DISPOSITION,
+                        ContentDisposition.inline().filename(name, StandardCharsets.UTF_8).build().toString())
+                .cacheControl(CacheControl.noStore())
+                .body(pdf);
     }
 
     /** 작업 API 의 오류 응답을 정상 응답과 같은 형태(JobStatusResponse)로 만든다. */

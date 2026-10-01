@@ -1,10 +1,12 @@
 package egovframework.example.ocr.service;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import egovframework.example.ocr.dto.AnalysisReport;
 import egovframework.example.ocr.dto.AnalysisResponse;
 import egovframework.example.ocr.dto.AnalysisResult;
 import egovframework.example.ocr.dto.AnalysisStage;
 import egovframework.example.ocr.exception.DocumentProcessingException;
+import egovframework.example.ocr.service.report.StructuredReportBuilder;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.ai.chat.client.ChatClient;
@@ -105,11 +107,15 @@ public class DocumentProcessorService {
             listener.stageStarted(AnalysisStage.AI_ANALYSIS);
             AnalysisResult result = classifyAndVerify(rawText);
 
+            // 결과 화면용 구조화 보고서(문서유형 코드 + 추출 필드 + 토큰 수 등).
+            AnalysisReport report = StructuredReportBuilder.build(rawText, totalPages, extractionMethod, result);
+
             return AnalysisResponse.builder()
                     .success(true)
                     .fileName(originalFileName)
                     .extractionMethod(extractionMethod)
                     .result(result)
+                    .report(report)
                     .build();
 
         } catch (DocumentProcessingException e) {

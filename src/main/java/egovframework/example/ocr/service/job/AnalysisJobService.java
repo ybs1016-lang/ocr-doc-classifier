@@ -10,6 +10,8 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Service;
 
 import java.io.File;
+import java.io.IOException;
+import java.nio.file.Files;
 import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentMap;
@@ -61,6 +63,8 @@ public class AnalysisJobService {
         purgeExpired();
 
         AnalysisJob job = new AnalysisJob(originalFileName, sequence.incrementAndGet());
+        // 분석이 끝나면 임시 파일이 지워지므로, 화면의 원문 미리보기용으로 원본을 메모리에 보관한다.
+        job.setOriginalPdf(readQuietly(tempFile));
         jobs.put(job.getId(), job);
         try {
             executor.execute(() -> run(job, tempFile));
@@ -118,6 +122,17 @@ public class AnalysisJobService {
     private void purgeExpired() {
         long now = System.currentTimeMillis();
         jobs.values().removeIf(job -> job.isFinished() && now - job.getFinishedAtMillis() >= retentionMillis);
+    }
+
+    /** 파일 내용을 읽는다. 읽을 수 없거나 비어 있으면 null (미리보기만 생략된다). */
+    private byte[] readQuietly(File file) {
+        try {
+            byte[] bytes = Files.readAllBytes(file.toPath());
+            return bytes.length == 0 ? null : bytes;
+        } catch (IOException | RuntimeException e) {
+            log.warn("원본 PDF 를 읽지 못해 미리보기를 생략합니다: {}", e.getMessage());
+            return null;
+        }
     }
 
     private void deleteQuietly(File file) {

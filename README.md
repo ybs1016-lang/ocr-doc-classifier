@@ -118,3 +118,21 @@ src/main/java/egovframework/example/ocr/
 - **보안**: 암호화되었거나 디지털 서명이 있는 PDF 는 `PDDocument.load()` 단계에서
   예외가 발생할 수 있으며, 이 경우 `DocumentProcessingException` 으로 래핑되어
   API 응답의 `errorMessage` 로 반환됩니다.
+
+
+## 결과 화면 (대시보드)
+
+분석을 시작하면 업로드 화면이 결과 대시보드로 바뀌고, 작업이 진행되는 동안 실시간으로 갱신됩니다.
+
+| 영역 | 내용 | 데이터 출처 |
+|---|---|---|
+| 상단 바 | 파일명·페이지 수, 작업 ID/문서 ID(복사), 처리 상태 | `jobId`, `documentId`, `status` |
+| 01 원문 근거 | 업로드한 PDF 미리보기(확대/축소, 새 탭 열기) | `GET /api/v1/documents/jobs/{id}/file` |
+| 02 분석 결과 | 전체 처리 상태(9단계 막대), 페이지·추출 토큰·인식 상태·스키마 버전, 문서유형, 추출 필드(전체/검수 필요) | `report` |
+| 03 원본 JSON | `report` 원문, 필드명 검색, 전체 복사, JSON 다운로드 | `report` |
+| 04 전체 분석 로그 | 단계별 처리 로그(`[0001] +0.014초` 형식) | `logs` |
+
+- 추출 필드는 `StructuredReportBuilder` 가 텍스트에서 규칙 기반으로 뽑습니다. 인식하는 필드 이름은 `LABELS` 사전과 `이름: 값` 형태이며, 새 서식은 사전에 라벨을 추가하면 됩니다.
+- 값이 비어 있는 필드는 `EMPTY` + **검수 필요** 로 표시됩니다.
+- 원문 미리보기를 위해 업로드한 PDF 를 작업과 같은 기간(`analysis.job.retention-seconds`, 기본 30분) 동안 **메모리에 보관**합니다.
+- 작업 ID 는 `job-<UUID>`, 문서 ID 는 `doc-<UUID>` 형식입니다.
